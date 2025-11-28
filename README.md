@@ -27,6 +27,14 @@ A comprehensive web-based application for managing student records, courses, and
 - **Responsive Design:** Optimized interface for both desktop and mobile devices.
 - **Security:** Implements JWT authentication, password hashing (Bcrypt), and secure HTTP headers (Helmet).
 
+## Screenshots
+
+| Login Page | Admin Dashboard |
+|:---:|:---:|
+| ![Login Page](screenshots/login.png) | ![Admin Dashboard](screenshots/dashboard.png) |
+| **Student Dashboard** | |
+| ![Student Dashboard](screenshots/student-dashboard.png) | |
+
 ##  Tech Stack
 
 ### Frontend
@@ -115,7 +123,7 @@ Student-Record/
 └── README.md               # Project documentation
 ```
 
-## 🔐 Database Seeding & Default Access
+##  Database Seeding & Default Access
 
 Since public registration is disabled for security, you need to seed the database with an initial Admin account when setting up the project for the first time.
 
