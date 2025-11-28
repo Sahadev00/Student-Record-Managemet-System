@@ -7,81 +7,89 @@ const ExamResult = require('../models/ExamResult');
 // @access  Private
 exports.getDashboardStats = async (req, res) => {
     try {
-        // 1. Total Counts
-        const totalStudents = await User.countDocuments({ role: 'student' });
-        const totalCourses = await Course.countDocuments();
+        const [
+            totalStudents,
+            totalCourses,
+            studentsPerCourse,
+            avgMarksPerCourse,
+            batchDistribution,
+            examPerformance
+        ] = await Promise.all([
+            // 1. Total Counts
+            User.countDocuments({ role: 'student' }),
+            Course.countDocuments(),
 
-        // 2. Students per Course
-        // We need to lookup the course name from the Course collection
-        const studentsPerCourse = await User.aggregate([
-            { $match: { role: 'student' } },
-            {
-                $group: {
-                    _id: '$course',
-                    count: { $sum: 1 }
+            // 2. Students per Course
+            User.aggregate([
+                { $match: { role: 'student' } },
+                {
+                    $group: {
+                        _id: '$course',
+                        count: { $sum: 1 }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'courses',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'courseDetails'
+                    }
+                },
+                {
+                    $project: {
+                        name: { $arrayElemAt: ['$courseDetails.name', 0] },
+                        count: 1
+                    }
                 }
-            },
-            {
-                $lookup: {
-                    from: 'courses',
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'courseDetails'
-                }
-            },
-            {
-                $project: {
-                    name: { $arrayElemAt: ['$courseDetails.name', 0] },
-                    count: 1
-                }
-            }
-        ]);
+            ]),
 
-        // 3. Average Marks per Course (Replaces Students per Semester)
-        const avgMarksPerCourse = await ExamResult.aggregate([
-            { $unwind: '$results' },
-            {
-                $group: {
-                    _id: '$course',
-                    avgMarks: { $avg: '$results.marksObtained' }
+            // 3. Average Marks per Course
+            ExamResult.aggregate([
+                { $unwind: '$results' },
+                {
+                    $group: {
+                        _id: '$course',
+                        avgMarks: { $avg: '$results.marksObtained' }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'courses',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'courseDetails'
+                    }
+                },
+                {
+                    $project: {
+                        name: { $arrayElemAt: ['$courseDetails.name', 0] },
+                        avgMarks: { $round: ['$avgMarks', 1] }
+                    }
                 }
-            },
-            {
-                $lookup: {
-                    from: 'courses',
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'courseDetails'
-                }
-            },
-            {
-                $project: {
-                    name: { $arrayElemAt: ['$courseDetails.name', 0] },
-                    avgMarks: { $round: ['$avgMarks', 1] }
-                }
-            }
-        ]);
+            ]),
 
-        // 4. Batch Distribution
-        const batchDistribution = await User.aggregate([
-            { $match: { role: 'student' } },
-            {
-                $group: {
-                    _id: '$batch',
-                    count: { $sum: 1 }
-                }
-            },
-            { $sort: { _id: -1 } }
-        ]);
+            // 4. Batch Distribution
+            User.aggregate([
+                { $match: { role: 'student' } },
+                {
+                    $group: {
+                        _id: '$batch',
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { _id: -1 } }
+            ]),
 
-        // 5. Exam Type Distribution (Board vs Pre-board)
-        const examPerformance = await ExamResult.aggregate([
-            {
-                $group: {
-                    _id: '$examType',
-                    count: { $sum: 1 }
+            // 5. Exam Type Distribution
+            ExamResult.aggregate([
+                {
+                    $group: {
+                        _id: '$examType',
+                        count: { $sum: 1 }
+                    }
                 }
-            }
+            ])
         ]);
 
         res.json({

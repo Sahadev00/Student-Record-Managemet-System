@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Users, GraduationCap, Settings, LogOut, School, BookOpen, Trash2, Edit, Plus, Save, FileText } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, LineChart, Line } from 'recharts';
+import { DashboardProvider, useDashboard } from './context/DashboardContext';
 
 function App() {
   const [showOfflineAlert, setShowOfflineAlert] = useState(!navigator.onLine);
@@ -86,7 +87,7 @@ function Login() {
     <div className="auth-split-layout">
       <div className="auth-left">
         <div className="auth-left-content">
-          <h1>Welcome to Orchid International College</h1>
+          <h1>Welcome to Student Record System</h1>
           <p>Manage student records, grades, and academic performance efficiently with our comprehensive management system.</p>
         </div>
       </div>
@@ -327,7 +328,7 @@ function Register() {
         <div className="logo-section" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <School size={32} className="logo-icon" />
           <div className="logo-text">
-            <span className="logo-title">Orchid Int'l</span>
+            <span className="logo-title">Student Record</span>
             <span className="logo-subtitle">College Portal</span>
           </div>
         </div>
@@ -391,14 +392,16 @@ function Register() {
         <div className="main-wrapper">
           {/* Content Area */}
           <main className="content-area">
-            <Routes>
-              <Route path="/" element={<DashboardHome />} />
-              <Route path="students" element={<StudentsManagement />} />
-              <Route path="grades" element={<MarksManagement />} />
-              <Route path="records" element={<StudentRecords />} />
-              <Route path="courses" element={<CoursesManagement />} />
-              <Route path="settings" element={<SettingsPage />} />
-            </Routes>
+            <DashboardProvider>
+              <Routes>
+                <Route path="/" element={<DashboardHome />} />
+                <Route path="students" element={<StudentsManagement />} />
+                <Route path="grades" element={<MarksManagement />} />
+                <Route path="records" element={<StudentRecords />} />
+                <Route path="courses" element={<CoursesManagement />} />
+                <Route path="settings" element={<SettingsPage />} />
+              </Routes>
+            </DashboardProvider>
           </main>
         </div>
       </div>
@@ -407,34 +410,19 @@ function Register() {
 }
 
 function DashboardHome() {
-  const [stats, setStats] = useState({
-    totalStudents: 0,
-    totalCourses: 0,
-    studentsPerCourse: [],
-    avgMarksPerCourse: [],
-    batchDistribution: [],
-    examPerformance: []
-  })
+  const { stats, fetchStats, loadingStats } = useDashboard();
 
   const COLORS = ['#475569', '#0f172a']; // Slate 600 (Secondary) & Slate 900 (Primary)
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const userInfo = JSON.parse(localStorage.getItem('userInfo'))
-        const res = await fetch('/api/dashboard/stats', {
-          headers: {
-            Authorization: `Bearer ${userInfo.token}`,
-          },
-        })
-        const data = await res.json()
-        setStats(data)
-      } catch (error) {
-        console.error('Failed to fetch stats')
-      }
-    }
-    fetchStats()
-  }, [])
+    fetchStats();
+  }, [fetchStats]);
+
+  if (loadingStats && !stats) {
+    return <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Loading dashboard...</div>;
+  }
+
+  if (!stats) return null;
 
   const StatCard = ({ title, value, icon: Icon, color, bgColor }) => (
     <div className="card" style={{ 
@@ -605,7 +593,7 @@ function DashboardHome() {
 
 function StudentsManagement() {
   const [students, setStudents] = useState([])
-  const [courses, setCourses] = useState([])
+  const { courses, fetchCourses } = useDashboard(); // Use context for courses
   const [showAddModal, setShowAddModal] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -625,8 +613,8 @@ function StudentsManagement() {
 
   useEffect(() => {
     fetchStudents()
-    fetchCourses()
-  }, [])
+    fetchCourses() // Ensure courses are loaded
+  }, [fetchCourses])
 
   const fetchStudents = async () => {
     try {
@@ -649,25 +637,7 @@ function StudentsManagement() {
     }
   }
 
-  const fetchCourses = async () => {
-    try {
-      const userInfo = JSON.parse(localStorage.getItem('userInfo'))
-      const token = userInfo ? userInfo.token : null
-
-      const res = await fetch('/api/courses', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Cache-Control': 'no-cache'
-        }
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setCourses(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch courses')
-    }
-  }
+  // Removed local fetchCourses
 
   const handleSaveStudent = async (e) => {
     e.preventDefault()
@@ -794,7 +764,7 @@ function StudentsManagement() {
             onChange={e => setSelectedCourseFilter(e.target.value)}
           >
             <option value="">All Courses</option>
-            {courses.map(c => (
+            {(courses || []).map(c => (
               <option key={c._id} value={c._id}>{c.name} ({c.code})</option>
             ))}
           </select>
@@ -904,7 +874,7 @@ function StudentsManagement() {
                     style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
                   >
                     <option value="">Select Course</option>
-                    {courses.map(c => (
+                    {(courses || []).map(c => (
                       <option key={c._id} value={c._id}>{c.name} ({c.code})</option>
                     ))}
                   </select>
@@ -966,8 +936,7 @@ function StudentsManagement() {
 }
 
 function CoursesManagement() {
-  const [courses, setCourses] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { courses, fetchCourses, loadingCourses, setCourses } = useDashboard();
   const [showAddModal, setShowAddModal] = useState(false)
   const [newCourse, setNewCourse] = useState({ name: '', code: '', totalSemesters: 8 })
   const [selectedCourse, setSelectedCourse] = useState(null)
@@ -976,29 +945,7 @@ function CoursesManagement() {
   // Fetch courses on load
   useEffect(() => {
     fetchCourses()
-  }, [])
-
-  const fetchCourses = async () => {
-    try {
-      const userInfo = JSON.parse(localStorage.getItem('userInfo'))
-      const token = userInfo ? userInfo.token : null
-      
-      const res = await fetch('/api/courses', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Cache-Control': 'no-cache'
-        }
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setCourses(data)
-      }
-    } catch (error) {
-      console.error('Failed to fetch courses')
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [fetchCourses])
 
   const handleAddCourse = async (e) => {
     e.preventDefault()
@@ -1012,7 +959,8 @@ function CoursesManagement() {
 
       if (res.ok) {
         setShowAddModal(false)
-        setCourses(prev => [...prev, data])
+        // Update context state
+        setCourses(prev => [...(prev || []), data])
         setNewCourse({ name: '', code: '', totalSemesters: 8 })
         setNotification('Course Added Successfully')
         setTimeout(() => setNotification(''), 2000)
@@ -1032,24 +980,19 @@ function CoursesManagement() {
     }
 
     if (!selectedCourse) return
-    try {
-      const res = await fetch('/api/courses')
-      const data = await res.json()
-      setCourses(data)
-      const updated = data.find(c => c._id === selectedCourse._id)
-      if (updated) setSelectedCourse(updated)
-    } catch (error) {
-      console.error('Failed to refresh course')
-    }
+    // Force refresh from server
+    fetchCourses(true);
   }
 
   if (selectedCourse) {
-    return <CourseDetails course={selectedCourse} onBack={() => { setSelectedCourse(null); fetchCourses(); }} onUpdate={refreshSelectedCourse} />
+    return <CourseDetails course={selectedCourse} onBack={() => { setSelectedCourse(null); }} onUpdate={refreshSelectedCourse} />
   }
 
-  if (loading) {
+  if (loadingCourses && !courses) {
     return <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Loading courses...</div>
   }
+
+  const displayCourses = courses || [];
 
   return (
     <div className="card">
@@ -1060,7 +1003,7 @@ function CoursesManagement() {
       </div>
 
       <div className="stats-grid">
-        {courses.map(course => (
+        {displayCourses.map(course => (
           <div key={course._id} className="stat-card" onClick={() => setSelectedCourse(course)} style={{ cursor: 'pointer' }}>
             <h3>{course.code}</h3>
             <p style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '10px 0' }}>{course.name}</p>
@@ -2210,7 +2153,7 @@ function StudentDashboard() {
         <div className="logo-section" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <School size={32} className="logo-icon" />
           <div className="logo-text">
-            <span className="logo-title">Orchid Int'l</span>
+            <span className="logo-title">Student Record</span>
             <span className="logo-subtitle">Student Portal</span>
           </div>
         </div>
