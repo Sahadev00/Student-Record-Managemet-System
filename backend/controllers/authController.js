@@ -41,9 +41,8 @@ exports.registerUser = async (req, res) => {
         if (user) {
             // If admin created a student, log credentials to console (mock email)
             if (role === 'student') {
-                console.log(`[EMAIL MOCK] Student Created: Email: ${email}, Password: ${password}`);
+                // Only log for development, remove for production
             }
-
             res.status(201).json({
                 _id: user.id,
                 name: user.name,

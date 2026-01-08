@@ -20,8 +20,8 @@ const protect = async (req, res, next) => {
 
             next();
         } catch (error) {
-            console.error(error);
-            res.status(401).json({ message: 'Not authorized' });
+            console.error('[ERROR] JWT verification failed:', error.message);
+            res.status(401).json({ message: 'Not authorized: ' + error.message });
         }
     } else {
         res.status(401).json({ message: 'Not authorized, no token' });
@@ -29,11 +29,17 @@ const protect = async (req, res, next) => {
 };
 
 const admin = (req, res, next) => {
-    if (req.user && req.user.role === 'admin') {
-        next();
-    } else {
-        res.status(401).json({ message: 'Not authorized as an admin' });
+    if (!req.user) {
+        console.error('[ERROR] No user found in request.');
+        res.status(401).json({ message: 'Not authorized as an admin: no user' });
+        return;
     }
+    if (req.user.role !== 'admin') {
+        console.error('[ERROR] User is not admin:', req.user);
+        res.status(401).json({ message: 'Not authorized as an admin: not admin' });
+        return;
+    }
+    next();
 };
 
 module.exports = { protect, admin };

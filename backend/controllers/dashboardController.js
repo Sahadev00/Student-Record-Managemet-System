@@ -81,11 +81,12 @@ exports.getDashboardStats = async (req, res) => {
                 { $sort: { _id: -1 } }
             ]),
 
-            // 5. Exam Type Distribution
+            // 5. Exam Performance (Pass/Fail)
             ExamResult.aggregate([
+                { $unwind: '$results' },
                 {
                     $group: {
-                        _id: '$examType',
+                        _id: '$results.status',
                         count: { $sum: 1 }
                     }
                 }
@@ -108,7 +109,7 @@ exports.getDashboardStats = async (req, res) => {
                 count: item.count
             })),
             examPerformance: examPerformance.map(item => ({
-                name: item._id === 'pre-board' ? 'Pre-Board' : 'Board',
+                name: item._id === 'pass' ? 'Pass' : 'Fail',
                 value: item.count
             }))
         });

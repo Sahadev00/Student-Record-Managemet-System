@@ -664,9 +664,14 @@ function StudentsManagement() {
         body = { ...studentData }
       }
 
+      const userInfo = JSON.parse(localStorage.getItem('userInfo'))
+      const token = userInfo ? userInfo.token : null
       const res = await fetch(url, {
         method: method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(body)
       })
 
@@ -938,6 +943,8 @@ function StudentsManagement() {
 function CoursesManagement() {
   const { courses, fetchCourses, loadingCourses, setCourses } = useDashboard();
   const [showAddModal, setShowAddModal] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [newCourse, setNewCourse] = useState({ name: '', code: '', totalSemesters: 8 })
   const [selectedCourse, setSelectedCourse] = useState(null)
   const [notification, setNotification] = useState('')
@@ -950,8 +957,16 @@ function CoursesManagement() {
   const handleAddCourse = async (e) => {
     e.preventDefault()
     try {
-      const res = await fetch('/api/courses', {
-        method: 'POST',
+      let url = '/api/courses'
+      let method = 'POST'
+
+      if (isEditing) {
+        url = `/api/courses/${editingId}`
+        method = 'PUT'
+      }
+
+      const res = await fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCourse)
       })
@@ -960,16 +975,35 @@ function CoursesManagement() {
       if (res.ok) {
         setShowAddModal(false)
         // Update context state
-        setCourses(prev => [...(prev || []), data])
+        if (isEditing) {
+          setCourses(prev => prev.map(c => c._id === editingId ? data : c))
+        } else {
+          setCourses(prev => [...(prev || []), data])
+        }
+        
         setNewCourse({ name: '', code: '', totalSemesters: 8 })
-        setNotification('Course Added Successfully')
+        setIsEditing(false)
+        setEditingId(null)
+        setNotification(isEditing ? 'Course Updated Successfully' : 'Course Added Successfully')
         setTimeout(() => setNotification(''), 2000)
       } else {
-        alert(data.message || 'Failed to add course')
+        alert(data.message || 'Failed to save course')
       }
     } catch (error) {
-      alert('Error adding course')
+      alert('Error saving course')
     }
+  }
+
+  const openEditModal = (e, course) => {
+    e.stopPropagation()
+    setNewCourse({
+      name: course.name,
+      code: course.code,
+      totalSemesters: course.totalSemesters
+    })
+    setEditingId(course._id)
+    setIsEditing(true)
+    setShowAddModal(true)
   }
 
   const refreshSelectedCourse = async (updatedCourse) => {
@@ -982,6 +1016,27 @@ function CoursesManagement() {
     if (!selectedCourse) return
     // Force refresh from server
     fetchCourses(true);
+  }
+
+  const handleDeleteCourse = async (e, courseId) => {
+    e.stopPropagation(); // Prevent card click
+    if (!window.confirm('Are you sure you want to delete this course? This action cannot be undone.')) return;
+
+    try {
+      const res = await fetch(`/api/courses/${courseId}`, {
+        method: 'DELETE'
+      });
+      
+      if (res.ok) {
+        setCourses(prev => prev.filter(c => c._id !== courseId));
+        setNotification('Course Deleted Successfully');
+        setTimeout(() => setNotification(''), 2000);
+      } else {
+        alert('Failed to delete course');
+      }
+    } catch (error) {
+      alert('Error deleting course');
+    }
   }
 
   if (selectedCourse) {
@@ -999,17 +1054,68 @@ function CoursesManagement() {
       {notification && <div style={{ padding: '10px', background: '#dcfce7', color: '#166534', borderRadius: '4px', marginBottom: '1rem' }}>{notification}</div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2>Course Management</h2>
-        <button onClick={() => setShowAddModal(true)} className="btn-action" style={{ width: 'auto' }}>+ Add Course</button>
+        <button onClick={() => {
+          setNewCourse({ name: '', code: '', totalSemesters: 8 })
+          setIsEditing(false)
+          setShowAddModal(true)
+        }} className="btn-action" style={{ width: 'auto' }}>+ Add Course</button>
       </div>
 
-      <div className="stats-grid">
-        {displayCourses.map(course => (
-          <div key={course._id} className="stat-card" onClick={() => setSelectedCourse(course)} style={{ cursor: 'pointer' }}>
-            <h3>{course.code}</h3>
-            <p style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: '10px 0' }}>{course.name}</p>
-            <p style={{ color: '#666' }}>{course.totalSemesters} Semesters</p>
-          </div>
-        ))}
+      <div className="table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Course Name</th>
+              <th>Semesters</th>
+              <th style={{ textAlign: 'right', width: '80px' }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayCourses.length > 0 ? (
+              displayCourses.map((course) => (
+                <tr 
+                  key={course._id} 
+                  className="student-row" 
+                  onClick={() => setSelectedCourse(course)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <td style={{ fontWeight: '600' }}>{course.code}</td>
+                  <td>{course.name}</td>
+                  <td>{course.totalSemesters}</td>
+                  <td>
+                    <div className="action-buttons">
+                      <button 
+                        onClick={(e) => openEditModal(e, course)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}
+                        title="Edit"
+                        onMouseOver={(e) => e.currentTarget.style.color = '#2563eb'}
+                        onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button 
+                        onClick={(e) => handleDeleteCourse(e, course._id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}
+                        title="Delete"
+                        onMouseOver={(e) => e.currentTarget.style.color = '#ef4444'}
+                        onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af' }}>
+                  No courses found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {showAddModal && (
@@ -1018,7 +1124,7 @@ function CoursesManagement() {
           background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '8px', width: '400px' }}>
-            <h3>Add New Course</h3>
+            <h3>{isEditing ? 'Edit Course' : 'Add New Course'}</h3>
             <form onSubmit={handleAddCourse}>
               <div style={{ marginBottom: '10px' }}>
                 <label>Course Name (e.g. Bachelor in Information Management):</label>
@@ -1051,7 +1157,7 @@ function CoursesManagement() {
                 />
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button type="submit" className="btn-action">Save</button>
+                <button type="submit" className="btn-action">{isEditing ? 'Update' : 'Save'}</button>
                 <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary">Cancel</button>
               </div>
             </form>
@@ -1065,6 +1171,8 @@ function CoursesManagement() {
 function CourseDetails({ course, onBack, onUpdate }) {
   const [activeSemester, setActiveSemester] = useState(1)
   const [showAddSubject, setShowAddSubject] = useState(false)
+  const [isEditingSubject, setIsEditingSubject] = useState(false)
+  const [editingSubjectCode, setEditingSubjectCode] = useState(null)
   const [newSubject, setNewSubject] = useState({ name: '', code: '', creditHours: 3 })
   const [notification, setNotification] = useState('')
 
@@ -1075,18 +1183,28 @@ function CourseDetails({ course, onBack, onUpdate }) {
   const handleAddSubject = async (e) => {
     e.preventDefault()
     try {
-      const res = await fetch(`/api/courses/${course._id}/subjects`, {
-        method: 'POST',
+      let url = `/api/courses/${course._id}/subjects`
+      let method = 'POST'
+      
+      if (isEditingSubject) {
+        url = `/api/courses/${course._id}/subjects/${activeSemester}/${editingSubjectCode}`
+        method = 'PUT'
+      }
+
+      const res = await fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...newSubject, semester: activeSemester })
       })
       const data = await res.json()
       if (res.ok) {
-        setNotification('Subject Added Successfully')
+        setNotification(isEditingSubject ? 'Subject Updated Successfully' : 'Subject Added Successfully')
         setTimeout(() => {
           setNotification('')
           setShowAddSubject(false)
           setNewSubject({ name: '', code: '', creditHours: 3 })
+          setIsEditingSubject(false)
+          setEditingSubjectCode(null)
           if (onUpdate) {
             onUpdate(data.course)
           } else {
@@ -1094,12 +1212,46 @@ function CourseDetails({ course, onBack, onUpdate }) {
           }
         }, 2000)
       } else {
-        setNotification(data.message || 'Failed to add subject')
+        setNotification(data.message || 'Failed to save subject')
         setTimeout(() => setNotification(''), 3000)
       }
     } catch (error) {
-      setNotification('Error adding subject')
+      setNotification('Error saving subject')
       setTimeout(() => setNotification(''), 3000)
+    }
+  }
+
+  const openEditSubjectModal = (subject) => {
+    setNewSubject({
+      name: subject.name,
+      code: subject.code,
+      creditHours: subject.creditHours
+    })
+    setEditingSubjectCode(subject.code)
+    setIsEditingSubject(true)
+    setShowAddSubject(true)
+  }
+
+  const handleDeleteSubject = async (subjectCode) => {
+    if (!window.confirm('Are you sure you want to delete this subject?')) return;
+
+    try {
+      const res = await fetch(`/api/courses/${course._id}/subjects/${activeSemester}/${subjectCode}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setNotification('Subject Deleted Successfully');
+        if (onUpdate) {
+          onUpdate(data.course);
+        }
+        setTimeout(() => setNotification(''), 2000);
+      } else {
+        setNotification(data.message || 'Failed to delete subject');
+      }
+    } catch (error) {
+      setNotification('Error deleting subject');
     }
   }
 
@@ -1130,7 +1282,11 @@ function CourseDetails({ course, onBack, onUpdate }) {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <h3>Semester {activeSemester} Subjects</h3>
-        <button onClick={() => setShowAddSubject(true)} className="btn-action" style={{ width: 'auto', fontSize: '0.9rem' }}>+ Add Subject</button>
+        <button onClick={() => {
+          setNewSubject({ name: '', code: '', creditHours: 3 })
+          setIsEditingSubject(false)
+          setShowAddSubject(true)
+        }} className="btn-action" style={{ width: 'auto', fontSize: '0.9rem' }}>+ Add Subject</button>
       </div>
 
       <div className="table-container">
@@ -1140,20 +1296,43 @@ function CourseDetails({ course, onBack, onUpdate }) {
               <th>Code</th>
               <th>Subject Name</th>
               <th>Credit Hours</th>
+              <th style={{ textAlign: 'right', width: '80px' }}></th>
             </tr>
           </thead>
           <tbody>
             {subjects.length > 0 ? (
               subjects.map((sub, idx) => (
-                <tr key={idx}>
+                <tr key={idx} className="student-row">
                   <td>{sub.code}</td>
                   <td>{sub.name}</td>
                   <td>{sub.creditHours}</td>
+                  <td>
+                    <div className="action-buttons">
+                      <button 
+                        onClick={() => openEditSubjectModal(sub)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}
+                        title="Edit"
+                        onMouseOver={(e) => e.currentTarget.style.color = '#2563eb'}
+                        onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteSubject(sub.code)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '4px' }}
+                        title="Delete"
+                        onMouseOver={(e) => e.currentTarget.style.color = '#ef4444'}
+                        onMouseOut={(e) => e.currentTarget.style.color = '#64748b'}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="3" style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af' }}>
+                <td colSpan="4" style={{ padding: '3rem', textAlign: 'center', color: '#9ca3af' }}>
                   No subjects added yet.
                 </td>
               </tr>
@@ -1168,7 +1347,7 @@ function CourseDetails({ course, onBack, onUpdate }) {
           background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
           <div style={{ background: 'white', padding: '20px', borderRadius: '8px', width: '400px' }}>
-            <h3>Add Subject to Semester {activeSemester}</h3>
+            <h3>{isEditingSubject ? 'Edit Subject' : `Add Subject to Semester ${activeSemester}`}</h3>
             {notification && (
               <div style={{ 
                 padding: '10px', marginBottom: '10px', borderRadius: '4px', 
@@ -1211,7 +1390,7 @@ function CourseDetails({ course, onBack, onUpdate }) {
                 />
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button type="submit" className="btn-action">Save</button>
+                <button type="submit" className="btn-action">{isEditingSubject ? 'Update' : 'Save'}</button>
                 <button type="button" onClick={() => setShowAddSubject(false)} className="btn-secondary">Cancel</button>
               </div>
             </form>
@@ -1810,55 +1989,60 @@ function StudentRecords() {
           <div className="analytics-view">
              {studentResults.length > 0 ? (
                <>
-                 <div className="stats-grid" style={{ marginBottom: '2rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-                    <div className="stat-card">
-                      <h3>Board CGPA</h3>
-                      <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#0f172a' }}>{calculateAverage('board')}</p>
-                      <p style={{ color: '#64748b' }}>Cumulative Grade Point Average</p>
-                    </div>
-                    <div className="stat-card">
-                      <h3>Pre-Board CGPA</h3>
-                      <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#0f172a' }}>{calculateAverage('pre-board')}</p>
-                      <p style={{ color: '#64748b' }}>Cumulative Grade Point Average</p>
-                    </div>
-                    <div className="stat-card">
-                      <h3>Total Semesters</h3>
-                      <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#0f172a' }}>{studentResults.length}</p>
-                      <p style={{ color: '#64748b' }}>Exams Appeared</p>
-                    </div>
-                 </div>
+                <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '2rem' }}>
+                  <div className="stat-card">
+                    <h3>Batch</h3>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#0f172a' }}>{selectedStudent.batch}</p>
+                    <p style={{ color: '#64748b' }}>Student Batch</p>
+                  </div>
+                  <div className="stat-card">
+                    <h3>Course</h3>
+                    <p style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#0f172a' }}>{selectedStudent.course ? selectedStudent.course.code : '-'}</p>
+                    <p style={{ color: '#64748b' }}>{selectedStudent.course ? selectedStudent.course.name : ''}</p>
+                  </div>
+                  <div className="stat-card">
+                    <h3>Board CGPA</h3>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#0f172a' }}>{calculateAverage('board')}</p>
+                    <p style={{ color: '#64748b' }}>Cumulative GPA</p>
+                  </div>
+                  <div className="stat-card">
+                    <h3>Pre-Board CGPA</h3>
+                    <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#0f172a' }}>{calculateAverage('pre-board')}</p>
+                    <p style={{ color: '#64748b' }}>Cumulative GPA</p>
+                  </div>
+                </div>
 
-                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
-                    <div>
-                      <h3 style={{ marginBottom: '1rem', color: '#1f2937' }}>Recent Performance (Avg %)</h3>
-                      <div className="card" style={{ height: '300px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                            <XAxis dataKey="name" tick={{fontSize: 12}} interval={0} angle={-45} textAnchor="end" height={60} />
-                            <YAxis domain={[0, 100]} />
-                            <Tooltip />
-                            <Bar dataKey="percentage" fill="#0f172a" radius={[4, 4, 0, 0]} name="Avg %" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
+                  <div>
+                    <h3 style={{ marginBottom: '1rem', color: '#1f2937' }}>Recent Performance (Avg %)</h3>
+                    <div className="card" style={{ height: '300px' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="name" tick={{fontSize: 12}} interval={0} angle={-45} textAnchor="end" height={60} />
+                          <YAxis domain={[0, 100]} />
+                          <Tooltip />
+                          <Bar dataKey="percentage" fill="#0f172a" radius={[4, 4, 0, 0]} name="Avg %" />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
+                  </div>
 
-                    <div>
-                      <h3 style={{ marginBottom: '1rem', color: '#1f2937' }}>Performance Trend (%)</h3>
-                      <div className="card" style={{ height: '300px' }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                            <XAxis dataKey="name" tick={{fontSize: 12}} interval={0} angle={-45} textAnchor="end" height={60} />
-                            <YAxis domain={[0, 100]} />
-                            <Tooltip />
-                            <Line type="monotone" dataKey="percentage" stroke="#2563eb" strokeWidth={2} activeDot={{ r: 8 }} name="Percentage" />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
+                  <div>
+                    <h3 style={{ marginBottom: '1rem', color: '#1f2937' }}>Performance Trend (%)</h3>
+                    <div className="card" style={{ height: '300px' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                          <XAxis dataKey="name" tick={{fontSize: 12}} interval={0} angle={-45} textAnchor="end" height={60} />
+                          <YAxis domain={[0, 100]} />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="percentage" stroke="#2563eb" strokeWidth={2} activeDot={{ r: 8 }} name="Percentage" />
+                        </LineChart>
+                      </ResponsiveContainer>
                     </div>
-                 </div>
+                  </div>
+                </div>
                </>
              ) : (
                 <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af', background: '#f9fafb', borderRadius: '0.5rem' }}>
